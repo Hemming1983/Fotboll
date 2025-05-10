@@ -2,7 +2,8 @@
 #define GAMECONTROLLER_H
 
 #include <SDL2/SDL.h>
-#include "GameModel.h" 
+#include "GameModel.h"
+#include "GameView.h"
 // Forward-deklaration av GameModel (för att undvika cirkulära beroenden)
 struct GameModel;
 
@@ -18,4 +19,7 @@ void updateTriangleLogic(GameModel* model);
 void updateTriangleCoach(GameModel* model);
 void updateSquareLogic(struct GameModel* model);
 void updateSquareCoach(GameModel* model);
+void update(GameModel* model);
+void render(SDL_Renderer* renderer, GameTextures* textures, GameModel* model);
+
 #endif

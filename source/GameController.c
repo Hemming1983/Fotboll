@@ -5,6 +5,10 @@
 #include <SDL2/SDL_image.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <emscripten/emscripten.h>
+
+void update(GameModel* model);
+void render(SDL_Renderer* renderer, GameTextures* textures, GameModel* model);
 
 static void coachIdle(Player* coach){
     if (coach->animationState != IDLE) {
@@ -82,6 +86,20 @@ static bool handleEvents(GameModel* model)
     return true;
 }
 
+static GameModel model;
+static GameTextures textures;
+static SDL_Renderer* renderer;
+
+static void main_loop(void) {
+    if (!handleEvents(&model)) {
+        emscripten_cancel_main_loop();  // Stoppa loopen om användaren stänger
+        return;
+    }
+    update(&model);
+    render(renderer, &textures, &model);
+}
+
+
 
 int startGameLoop() {
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
@@ -101,88 +119,56 @@ int startGameLoop() {
         return 1;
     }
 
-    SDL_Window* window = SDL_CreateWindow("Football Simulation", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, 0);
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    SDL_Window* window = SDL_CreateWindow(
+        "Football Simulation",
+        SDL_WINDOWPOS_CENTERED,
+        SDL_WINDOWPOS_CENTERED,
+        WINDOW_WIDTH,
+        WINDOW_HEIGHT,
+        SDL_WINDOW_SHOWN
+    );
 
-    GameTextures textures = loadAllTextures(renderer);
-
-    if (!textures.playerTexture || !textures.grassTexture || !textures.coachTexture) {
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        IMG_Quit();
-        SDL_Quit();
-        return -1;
-    }
-
-    GameModel model;
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    textures = loadAllTextures(renderer);
     initializeModel(&model, textures.coachTexture, textures.ballTexture);
-    model.balls[0].texture = textures.ballTexture;
-    model.balls[1].texture = textures.ballTexture;
-    model.activePlayer = model.passOrder[0];
-    model.passInitiated = true;
-    model.passCompleted = true;
-    //handle_pass(&model, model.passOrder[0], model.passOrder[1]);
-    model.balls[0].attachedPlayer = model.passOrder[0];
-    model.balls[1].attachedPlayer = model.passOrder[3];
-    model.balls[0].state = ATTACHED;
-    model.balls[1].state = ATTACHED;
-    model.players[model.passOrder[0]].hasBall = true;
-    model.players[model.passOrder[3]].hasBall = true;
 
-    bool running = true;
-    while (running) {
-        running = handleEvents(&model);
+    emscripten_set_main_loop(main_loop, 0, 1);
 
-        if (model.currentPage == PAGE_MAIN) {
-            updatePassingLogic(&model);
-            update_players(model.players);
-            for (int i = 0; i < 2; i++) {
-                update_ball(&model.balls[i], model.players, &model);
-            }            
-            //update_ball(&model.ball, model.players, &model);
-            renderGame(renderer, textures.playerTexture, textures.grassTexture, &model);
-        }
-        else if (model.currentPage == PAGE_EMPTY) {
-            updateTriangleLogic(&model);
-            renderTriangleScene(renderer, &model, textures.playerTexture, textures.grassTexture);
+    return 0; // Koden når aldrig hit i webben, men behövs för kompilering
+}
 
-            // Rita knappar ändå
-            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-            SDL_Point triangle[4] = {
-                {WINDOW_WIDTH - 60, 10},
-                {WINDOW_WIDTH - 30, 10},
-                {WINDOW_WIDTH - 45, 30},
-                {WINDOW_WIDTH - 60, 10}
-            };
-            SDL_RenderDrawLines(renderer, triangle, 4);
 
-            SDL_Rect backButton = {WINDOW_WIDTH - 120, 10, 40, 20};
-            SDL_RenderDrawRect(renderer, &backButton);
-
-            //SDL_RenderPresent(renderer);
-        }
-
-        else if (model.currentPage == PAGE_SQUARE) {
-            updateSquareBall(&model);
-            updateSquareLogic(&model);
-            updateSquareCoach(&model);
-            renderSquareScene(renderer, &model, textures.grassTexture, textures.playerTexture);
-        }
-
-        SDL_Delay(16);
+void update(GameModel* model) {
+    switch (model->currentPage) {
+        case PAGE_MAIN:
+            updatePassingLogic(model);
+            update_players(model->players);
+            for (int i = 0; i < 2; i++)
+                update_ball(&model->balls[i], model->players, model);
+            break;
+        case PAGE_EMPTY:
+            updateTriangleLogic(model);
+            updateTriangleCoach(model);
+            break;
+        case PAGE_SQUARE:
+            updateSquareLogic(model);
+            updateSquareCoach(model);
+            break;
     }
+}
 
-    cleanupModel(&model);
-    SDL_DestroyTexture(textures.playerTexture);
-    SDL_DestroyTexture(textures.grassTexture);
-    SDL_DestroyTexture(textures.coachTexture);
-    SDL_DestroyTexture(model.balls[0].texture);
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    IMG_Quit();
-    SDL_Quit();
-
-    return 0;
+void render(SDL_Renderer* renderer, GameTextures* textures, GameModel* model) {
+    switch (model->currentPage) {
+        case PAGE_MAIN:
+            renderGame(renderer, textures->playerTexture, textures->grassTexture, model);
+            break;
+        case PAGE_EMPTY:
+            renderTriangleScene(renderer, model, textures->playerTexture, textures->grassTexture);
+            break;
+        case PAGE_SQUARE:
+            renderSquareScene(renderer, model, textures->grassTexture, textures->playerTexture);
+            break;
+    }
 }
 
 
